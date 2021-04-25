@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, Form, UploadFile
 from starlette.responses import Response
-from validator import User_Pydantic, UserIn_Pydantic, Image_Pydantic
+from validator import User_Pydantic, UserIn_Pydantic, Image_Pydantic, Faces_Pydantic_List, Faces_Pydantic
 from models import Users, Image, Faces
 from face_recognition import find_face
 
@@ -42,6 +42,12 @@ async def upload_image(username: str, password: str, file: bytes = File(...)):
     if user.password_hash != password:
         return {"message": "Wrong password"}
     faces = find_face(file)
+    faces_for_del = []
+    for face in faces:
+        if face['confidence']<0.97:
+            faces_for_del.append(face)
+    for face_del in faces_for_del:
+        faces.remove(face_del)
     image = await Image.create(
         image=file,
         description='test',
@@ -66,15 +72,26 @@ async def upload_image(username: str, password: str, file: bytes = File(...)):
 
 
 @router.get("/face/get-image")
-async def get_image(user: UserIn_Pydantic):
-    return {"message": "Hello World"}
-
+async def get_image(username: str, password: str, image_id: int):
+    image = await Image.get(id=image_id)
+    result = await Image_Pydantic.from_tortoise_orm(image)
+    response = {'stats':result, 'image':str(image.image)}
+    return response
 
 @router.get("/face/get-faces")
-async def get_faces(user: UserIn_Pydantic):
-    return {"message": "Hello World"}
+async def get_faces(username: str, password: str, image_id: int):
+    image = await Image.get(id=image_id)
+    faces = await Faces.filter(image=image)
+    print(type(faces), '_____________________________')
+    response = [await Faces_Pydantic.from_tortoise_orm(face) for face in faces]
+    return response
 
 
 @router.get("/face/get-stats")
-async def get_all(user: UserIn_Pydantic):
-    return {"message": "Hello World"}
+async def get_all(username: str, password: str):
+    user = await Users.get(username=username)
+    if user.password_hash != password:
+        return {"message": "Wrong password"}
+    images = await Image.filter(user=user)
+    response = [await Image_Pydantic.from_tortoise_orm(iamge) for iamge in images]
+    return response
